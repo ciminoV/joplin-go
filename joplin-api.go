@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -59,7 +60,7 @@ type Note struct {
 	Type                 int     `json:"type_,omitempty"`
 }
 
-/** All API calls that return multiple results will be paginated and will return the following structure */
+/** Multiple results are paginated with the following structure */
 type notesResult struct {
 	Items   []Note `json:"items"`
 	HasMore bool   `json:"has_more"`
@@ -130,6 +131,7 @@ func (c *Client) GetAllNotes(fields string, order_by string, order_dir string) (
 		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s:%d/notes/", BaseURL, c.port), nil)
 		if err != nil {
 			log.Print(err)
+			return notes, err
 		}
 
 		q := req.URL.Query()
@@ -175,12 +177,64 @@ func (c *Client) GetAllNotes(fields string, order_by string, order_dir string) (
 	}
 }
 
+/** Create a new note with a given format (markdown or html) */
+func (c *Client) CreateNote(title string, format string, body string) (Note, error) {
+	var note Note
+	var data map[string]string
+
+	if format == "markdown" {
+		data = map[string]string{
+			"title": title,
+			"body":  body,
+		}
+	} else if format == "html" {
+		data = map[string]string{
+			"title":     title,
+			"body_html": body,
+		}
+	} else {
+		return note, fmt.Errorf("Unknown note format.")
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s:%d/notes/", BaseURL, c.port), bytes.NewReader(jsonData))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	q := req.URL.Query()
+	q.Add("token", c.apiToken)
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := c.handle.Do(req)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer resp.Body.Close()
+
+	// Return the new note
+	new_note, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+	json.Unmarshal([]byte(new_note), &note)
+
+	return note, err
+}
+
 func main() {
 	newClient, _ := New()
 	// note1, _ := newClient.GetNote("<id>", "id,title,body,updated_time,is_conflict")
 	// fmt.Printf("%d", note1.Body)
-	notes, _ := newClient.GetAllNotes("id,title,body", "title", "asc")
-	for _, el := range notes {
-		fmt.Printf("%s\n", el.Title)
-	}
+	// notes, _ := newClient.GetAllNotes("id,title,body", "title", "asc")
+	// for _, el := range notes {
+	// 	fmt.Printf("%s\n", el.Title)
+	// }
+	newnote, _ := newClient.CreateNote("new note", "markdown", "Some note in **Markdown**")
+	fmt.Print(newnote.ID)
 }
