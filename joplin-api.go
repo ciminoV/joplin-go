@@ -13,7 +13,9 @@ import (
 )
 
 const (
-	BaseURL = "http://localhost"
+	BaseURL    = "http://localhost"
+	MinPortNum = 41184
+	MaxPortNum = 41194
 )
 
 /** Properties of a client */
@@ -68,25 +70,47 @@ type notesResult struct {
 
 /** Create a new client. Find joplin port and retrieve the auth token */
 func New() (*Client, error) {
+	var retErr error
+
+	portFound := false
+
 	newClient := Client{
 		handle:   &http.Client{},
 		port:     0,
 		apiToken: "",
 	}
 
-	// TODO: find programatically the port if default is not valid
-	newClient.port = 41184
+	// Find the port on which the service is running
+	for i := MinPortNum; i <= MaxPortNum; i++ {
+		resp, err := http.Get(fmt.Sprintf("%s:%d/ping", BaseURL, i))
+		if err != nil {
+			retErr = err
+			continue
+		}
 
-	// TODO: get token programmaticaly if the file doesn't already exist
-	auth_token, err := os.ReadFile("./.auth-token")
+		defer resp.Body.Close()
+
+		newClient.port = i
+
+		portFound = true
+		break
+	}
+
+	if !portFound {
+		return nil, retErr
+	}
+
+	authTokenFile, err := os.ReadFile("./.auth-token")
 	if err != nil {
-		fmt.Println(err)
+		// TODO: get token programmaticaly if the file doesn't already exist
+		retErr = err
+		return nil, retErr
 	}
 
 	// ignore new line character
-	newClient.apiToken = strings.TrimSpace(string(auth_token))
+	newClient.apiToken = strings.TrimSpace(string(authTokenFile))
 
-	return &newClient, err
+	return &newClient, nil
 }
 
 /** Retrieve a single note given an id and a string of fields */
@@ -162,7 +186,7 @@ func (c *Client) GetAllNotes(fields string, order_by string, order_dir string) (
 		}
 		json.Unmarshal([]byte(data), &result)
 
-		// Save all the notes
+		// Save all the notes in the current page
 		for _, note := range result.Items {
 			notes = append(notes, note)
 		}
@@ -228,13 +252,16 @@ func (c *Client) CreateNote(title string, format string, body string) (Note, err
 }
 
 func main() {
-	newClient, _ := New()
+	newClient, newErr := New()
+	if newErr != nil {
+		fmt.Print("Error in creating new client: ", newErr)
+	}
 	// note1, _ := newClient.GetNote("<id>", "id,title,body,updated_time,is_conflict")
 	// fmt.Printf("%d", note1.Body)
-	// notes, _ := newClient.GetAllNotes("id,title,body", "title", "asc")
-	// for _, el := range notes {
-	// 	fmt.Printf("%s\n", el.Title)
-	// }
-	newnote, _ := newClient.CreateNote("new note", "markdown", "Some note in **Markdown**")
-	fmt.Print(newnote.ID)
+	notes, _ := newClient.GetAllNotes("id,title,body", "title", "asc")
+	for _, el := range notes {
+		fmt.Printf("%s\n", el.Title)
+	}
+	// newnote, _ := newClient.CreateNote("new note", "markdown", "Some note in **Markdown**")
+	// fmt.Print(newnote.ID)
 }
