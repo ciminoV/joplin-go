@@ -251,6 +251,60 @@ func (c *Client) CreateNote(title string, format string, body string) (Note, err
 	return note, err
 }
 
+/** Update properties of an existing note with a given id */
+func (c *Client) UpdateNote(id string, properties string) (Note, error) {
+	var retNote Note
+
+	req, err := http.NewRequest(http.MethodPut, fmt.Sprintf("%s:%d/notes/%s", BaseURL, c.port, id), strings.NewReader(properties))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	q := req.URL.Query()
+	q.Add("token", c.apiToken)
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := c.handle.Do(req)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer resp.Body.Close()
+
+	// Return the updated note
+	updatedNote, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+	json.Unmarshal([]byte(updatedNote), &retNote)
+
+	return retNote, nil
+}
+
+/** Delete note with given the ID if any */
+func (c *Client) DeleteNote(id string, permanent bool) (string, error) {
+	req, err := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s:%d/notes/%s", BaseURL, c.port, id), nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	q := req.URL.Query()
+	if permanent {
+		q.Add("permanent", "1")
+	}
+	q.Add("token", c.apiToken)
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := c.handle.Do(req)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer resp.Body.Close()
+
+	return id, nil
+}
+
 func main() {
 	newClient, newErr := New()
 	if newErr != nil {
@@ -258,10 +312,15 @@ func main() {
 	}
 	// note1, _ := newClient.GetNote("<id>", "id,title,body,updated_time,is_conflict")
 	// fmt.Printf("%d", note1.Body)
-	notes, _ := newClient.GetAllNotes("id,title,body", "title", "asc")
-	for _, el := range notes {
-		fmt.Printf("%s\n", el.Title)
-	}
+	// notes, _ := newClient.GetAllNotes("id,title,body", "title", "asc")
+	// for _, el := range notes {
+	// 	fmt.Printf("%s\n", el.Title)
+	// }
 	// newnote, _ := newClient.CreateNote("new note", "markdown", "Some note in **Markdown**")
 	// fmt.Print(newnote.ID)
+	// data := `{"title": "updated note", "body": "provola!"}`
+	// updateNote, _ := newClient.UpdateNote("662d941226724fd4badf2d85340f36da", data)
+	// // fmt.Print(updateNote.ID)
+	deletedID, _ := newClient.DeleteNote("d73dc160bc684c24a3e66a4193dc7ba4", false)
+	fmt.Print(deletedID)
 }
