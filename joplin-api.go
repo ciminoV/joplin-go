@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -21,14 +20,14 @@ const (
 	retriesGetApiToken = 20
 )
 
-/** Properties of a client */
+/** Properties of a client. */
 type Client struct {
 	handle   *http.Client
 	port     int
 	apiToken string
 }
 
-/** Properties of a note */
+/** Properties of a note. */
 type Note struct {
 	ID                   string  `json:"id"`
 	ParentID             string  `json:"parent_id"`
@@ -65,13 +64,13 @@ type Note struct {
 	Type                 int     `json:"type_,omitempty"`
 }
 
-/** Multiple results are paginated with the following structure */
+/** Multiple results are paginated with the following structure. */
 type notesResult struct {
 	Items   []Note `json:"items"`
 	HasMore bool   `json:"has_more"`
 }
 
-/** Create a new client. Find joplin port and retrieve the auth token */
+/** Create a new client. Find joplin port and retrieve the auth token. */
 func New() (*Client, error) {
 	var retErr error
 
@@ -104,9 +103,8 @@ func New() (*Client, error) {
 	}
 
 	// Retrieve the authorisation token from file or request it programmatically
-	authTokenFile, err := os.ReadFile("./.auth-token")
-	if err == nil {
-		newClient.apiToken = strings.TrimSpace(string(authTokenFile))
+	if authTokenFile, err := os.ReadFile("./.auth-token"); err == nil {
+		newClient.apiToken = string(authTokenFile)
 	} else {
 		var result struct {
 			AuthToken string `json:"auth_token"`
@@ -200,13 +198,13 @@ func New() (*Client, error) {
 	return &newClient, nil
 }
 
-/** Retrieve a single note given an id and a string of fields */
+/** Retrieve a single note given an id and a string of fields. */
 func (c *Client) GetNote(id string, fields string) (Note, error) {
 	var note Note
 
 	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s:%d/notes/%s", BaseURL, c.port, id), nil)
 	if err != nil {
-		log.Print(err)
+		return note, err
 	}
 
 	q := req.URL.Query()
@@ -214,24 +212,31 @@ func (c *Client) GetNote(id string, fields string) (Note, error) {
 	q.Add("token", c.apiToken)
 	req.URL.RawQuery = q.Encode()
 
-	// TODO: more verbose errors
 	resp, err := c.handle.Do(req)
 	if err != nil {
-		log.Fatal(err)
+		return note, err
 	}
 
 	defer resp.Body.Close()
 
+	// Check if note doesn't exist
+	if resp.StatusCode == 404 {
+		err = fmt.Errorf("Could not find note with ID %s", id)
+		return note, err
+	}
+
+	// Store the note
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatal(err)
+		return note, err
 	}
+
 	json.Unmarshal([]byte(data), &note)
 
 	return note, err
 }
 
-/** Retrieve all the notes in a given order */
+/** Retrieve all the notes in a given order. */
 func (c *Client) GetAllNotes(fields string, order_by string, order_dir string) ([]Note, error) {
 	var result notesResult
 	var notes []Note
@@ -241,7 +246,6 @@ func (c *Client) GetAllNotes(fields string, order_by string, order_dir string) (
 	for {
 		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s:%d/notes/", BaseURL, c.port), nil)
 		if err != nil {
-			log.Print(err)
 			return notes, err
 		}
 
@@ -257,10 +261,8 @@ func (c *Client) GetAllNotes(fields string, order_by string, order_dir string) (
 		q.Add("token", c.apiToken)
 		req.URL.RawQuery = q.Encode()
 
-		// TODO: more verbose errors
 		resp, err := c.handle.Do(req)
 		if err != nil {
-			log.Fatal(err)
 			return notes, err
 		}
 
@@ -268,9 +270,9 @@ func (c *Client) GetAllNotes(fields string, order_by string, order_dir string) (
 
 		data, err := io.ReadAll(resp.Body)
 		if err != nil {
-			log.Fatal(err)
 			return notes, err
 		}
+
 		json.Unmarshal([]byte(data), &result)
 
 		// Save all the notes in the current page
@@ -288,7 +290,7 @@ func (c *Client) GetAllNotes(fields string, order_by string, order_dir string) (
 	}
 }
 
-/** Create a new note with a given format (markdown or html) */
+/** Create a new note with a given format (markdown or html). */
 func (c *Client) CreateNote(title string, format string, body string) (Note, error) {
 	var note Note
 	var data map[string]string
@@ -309,12 +311,12 @@ func (c *Client) CreateNote(title string, format string, body string) (Note, err
 
 	jsonData, err := json.Marshal(data)
 	if err != nil {
-		log.Fatal(err)
+		return note, err
 	}
 
 	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s:%d/notes/", BaseURL, c.port), bytes.NewReader(jsonData))
 	if err != nil {
-		log.Fatal(err)
+		return note, err
 	}
 
 	q := req.URL.Query()
@@ -323,28 +325,29 @@ func (c *Client) CreateNote(title string, format string, body string) (Note, err
 
 	resp, err := c.handle.Do(req)
 	if err != nil {
-		log.Fatal(err)
+		return note, err
 	}
 
 	defer resp.Body.Close()
 
-	// Return the new note
+	// Get the new note
 	new_note, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatal(err)
+		return note, err
 	}
+
 	json.Unmarshal([]byte(new_note), &note)
 
-	return note, err
+	return note, nil
 }
 
-/** Update properties of an existing note with a given id */
+/** Update properties of an existing note with a given id. */
 func (c *Client) UpdateNote(id string, properties string) (Note, error) {
 	var retNote Note
 
 	req, err := http.NewRequest(http.MethodPut, fmt.Sprintf("%s:%d/notes/%s", BaseURL, c.port, id), strings.NewReader(properties))
 	if err != nil {
-		log.Fatal(err)
+		return retNote, err
 	}
 
 	q := req.URL.Query()
@@ -353,7 +356,7 @@ func (c *Client) UpdateNote(id string, properties string) (Note, error) {
 
 	resp, err := c.handle.Do(req)
 	if err != nil {
-		log.Fatal(err)
+		return retNote, err
 	}
 
 	defer resp.Body.Close()
@@ -361,18 +364,19 @@ func (c *Client) UpdateNote(id string, properties string) (Note, error) {
 	// Return the updated note
 	updatedNote, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatal(err)
+		return retNote, err
 	}
+
 	json.Unmarshal([]byte(updatedNote), &retNote)
 
 	return retNote, nil
 }
 
-/** Delete note with given ID if any */
+/** Delete note with given ID if any. */
 func (c *Client) DeleteNote(id string, permanent bool) (string, error) {
 	req, err := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s:%d/notes/%s", BaseURL, c.port, id), nil)
 	if err != nil {
-		log.Fatal(err)
+		return "", err
 	}
 
 	q := req.URL.Query()
@@ -384,7 +388,7 @@ func (c *Client) DeleteNote(id string, permanent bool) (string, error) {
 
 	resp, err := c.handle.Do(req)
 	if err != nil {
-		log.Fatal(err)
+		return "", err
 	}
 
 	defer resp.Body.Close()
@@ -397,8 +401,11 @@ func main() {
 	if newErr != nil {
 		fmt.Print("Error in creating new client: ", newErr)
 	}
-	// note1, _ := newClient.GetNote("<id>", "id,title,body,updated_time,is_conflict")
-	// fmt.Printf("%d", note1.Body)
+	note1, note1err := newClient.GetNote("202020", "id,title,body,updated_time")
+	fmt.Print(note1.Body)
+	if note1err != nil {
+		fmt.Print(note1err)
+	}
 	// notes, _ := newClient.GetAllNotes("id,title,body", "title", "asc")
 	// for _, el := range notes {
 	// 	fmt.Printf("%s\n", el.Title)
@@ -406,8 +413,8 @@ func main() {
 	// newnote, _ := newClient.CreateNote("new note", "markdown", "Some note in **Markdown**")
 	// fmt.Print(newnote.ID)
 	// data := `{"title": "updated note", "body": "provola!"}`
-	// updateNote, _ := newClient.UpdateNote("662d941226724fd4badf2d85340f36da", data)
-	// // fmt.Print(updateNote.ID)
-	deletedID, _ := newClient.DeleteNote("d73dc160bc684c24a3e66a4193dc7ba4", false)
-	fmt.Print(deletedID)
+	// updateNote, _ := newClient.UpdateNote("32040403030sa", data)
+	// fmt.Print(updateNote.ID)
+	// deletedID, _ := newClient.DeleteNote("d2020010", false)
+	// fmt.Print(deletedID)
 }
