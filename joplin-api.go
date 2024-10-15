@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -10,12 +11,14 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
-	BaseURL    = "http://localhost"
-	MinPortNum = 41184
-	MaxPortNum = 41194
+	BaseURL            = "http://localhost"
+	MinPortNum         = 41184
+	MaxPortNum         = 41194
+	retriesGetApiToken = 20
 )
 
 /** Properties of a client */
@@ -100,15 +103,99 @@ func New() (*Client, error) {
 		return nil, retErr
 	}
 
+	// Retrieve the authorisation token from file or request it programmatically
 	authTokenFile, err := os.ReadFile("./.auth-token")
-	if err != nil {
-		// TODO: get token programmaticaly if the file doesn't already exist
-		retErr = err
-		return nil, retErr
-	}
+	if err == nil {
+		newClient.apiToken = strings.TrimSpace(string(authTokenFile))
+	} else {
+		var result struct {
+			AuthToken string `json:"auth_token"`
+			Status    string `json:"status"`
+			ApiToken  string `json:"token,omitempty"`
+		}
 
-	// ignore new line character
-	newClient.apiToken = strings.TrimSpace(string(authTokenFile))
+		// Get the auth token
+		resp, err := http.Post(fmt.Sprintf("%s:%d/auth", BaseURL, newClient.port), "application/json", nil)
+		if err != nil {
+			retErr = err
+			return nil, retErr
+		}
+
+		defer resp.Body.Close()
+
+		data, err := io.ReadAll(resp.Body)
+		if err != nil {
+			retErr = err
+			return nil, retErr
+		}
+
+		json.Unmarshal([]byte(data), &result)
+
+		// Wait for the user to accept
+		retries := 0
+		receivedApiToken := false
+
+		for {
+			req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s:%d/auth/check", BaseURL, newClient.port), nil)
+			if err != nil {
+				retErr = err
+				break
+			}
+
+			q := req.URL.Query()
+			q.Add("auth_token", result.AuthToken)
+			req.URL.RawQuery = q.Encode()
+
+			resp, err := newClient.handle.Do(req)
+			if err != nil {
+				retErr = err
+				break
+			}
+
+			defer resp.Body.Close()
+
+			data, err := io.ReadAll(resp.Body)
+			if err != nil {
+				retErr = err
+				break
+			}
+
+			json.Unmarshal([]byte(data), &result)
+
+			if result.Status == "accepted" {
+				receivedApiToken = true
+
+				// Save the api token on a file
+				newClient.apiToken = result.ApiToken
+				if err := os.WriteFile("./.auth-token", []byte(newClient.apiToken), 0666); err != nil {
+					retErr = err
+				}
+
+				break
+			} else if result.Status == "rejected" {
+				err = errors.New("Api-token request rejected.")
+				retErr = err
+
+				break
+			} else if result.Status == "waiting" {
+				retries++
+
+				if retries < retriesGetApiToken {
+					time.Sleep(time.Second)
+
+					continue
+				}
+
+				retErr = fmt.Errorf("Api token could not get an answer from user.")
+
+				break
+			}
+		}
+
+		if !receivedApiToken {
+			return nil, retErr
+		}
+	}
 
 	return &newClient, nil
 }
@@ -281,7 +368,7 @@ func (c *Client) UpdateNote(id string, properties string) (Note, error) {
 	return retNote, nil
 }
 
-/** Delete note with given the ID if any */
+/** Delete note with given ID if any */
 func (c *Client) DeleteNote(id string, permanent bool) (string, error) {
 	req, err := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s:%d/notes/%s", BaseURL, c.port, id), nil)
 	if err != nil {
