@@ -345,10 +345,19 @@ func (c *Client) CreateNote(title string, format string, body string) (Note, err
 }
 
 /** Update properties of an existing note with a given id. */
-func (c *Client) UpdateNote(id string, properties string) (Note, error) {
+func (c *Client) UpdateNote(id string, properties []string) (Note, error) {
 	var retNote Note
 
-	req, err := http.NewRequest(http.MethodPut, fmt.Sprintf("%s:%d/notes/%s", BaseURL, c.port, id), strings.NewReader(properties))
+	// Transform the input vector of strings to a json string
+	propertiesMap := make(map[string]string)
+	for i := 0; i < len(properties); i += 2 {
+		if i+1 < len(properties) {
+			propertiesMap[properties[i]] = properties[i+1]
+		}
+	}
+	propertiesJson, _ := json.Marshal(propertiesMap)
+
+	req, err := http.NewRequest(http.MethodPut, fmt.Sprintf("%s:%d/notes/%s", BaseURL, c.port, id), bytes.NewReader(propertiesJson))
 	if err != nil {
 		return retNote, err
 	}
@@ -398,28 +407,3 @@ func (c *Client) DeleteNote(id string, permanent bool) (string, error) {
 
 	return id, nil
 }
-
-// func main() {
-// 	newClient, newErr := New()
-// 	if newErr != nil {
-// 		fmt.Print("Error in creating new client: ", newErr)
-// 	}
-// 	// note1, note1err := newClient.GetNote("202020", "id,title,body,updated_time")
-// 	// fmt.Print(note1.Body)
-// 	// if note1err != nil {
-// 	// 	fmt.Print(note1err)
-// 	// }
-// 	notes, notesErr := newClient.GetAllNotes("id,title", "title", "asc")
-// 	if notesErr != nil {
-// 		fmt.Print("Error in creating new client: ", newErr)
-// 	}
-// 	data, _ := json.MarshalIndent(notes, "", "")
-// 	fmt.Println(string(data))
-// 	// newnote, _ := newClient.CreateNote("new note", "markdown", "Some note in **Markdown**")
-// 	// fmt.Print(newnote.ID)
-// 	// updateData := `{"title": "updated note", "body": "provola!"}`
-// 	// updateNote, _ := newClient.UpdateNote("360cd1a12bfb4094a315e4a56487a424", updateData)
-// 	// fmt.Print(updateNote.UpdatedTime)
-// 	// deletedID, _ := newClient.DeleteNote("d2020010", false)
-// 	// fmt.Print(deletedID)
-// }
