@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"bytes"
@@ -29,9 +29,9 @@ type Client struct {
 
 /** Properties of a note. */
 type Note struct {
-	ID                   string  `json:"id"`
-	ParentID             string  `json:"parent_id"`
-	Title                string  `json:"title"`
+	ID                   string  `json:"id,omitempty"`
+	ParentID             string  `json:"parent_id,omitempty"`
+	Title                string  `json:"title,omitempty"`
 	Body                 string  `json:"body,omitempty"`
 	CreatedTime          int     `json:"created_time,omitempty"`
 	UpdatedTime          int     `json:"updated_time,omitempty"`
@@ -61,7 +61,6 @@ type Note struct {
 	BaseURL              string  `json:"base_url,omitempty"`
 	ImageDataURL         string  `json:"image_data_url,omitempty"`
 	CropRect             string  `json:"crop_rect,omitempty"`
-	Type                 int     `json:"type_,omitempty"`
 }
 
 /** Multiple results are paginated with the following structure. */
@@ -219,9 +218,8 @@ func (c *Client) GetNote(id string, fields string) (Note, error) {
 
 	defer resp.Body.Close()
 
-	// Check if note doesn't exist
-	if resp.StatusCode == 404 {
-		err = fmt.Errorf("Could not find note with ID %s", id)
+	if resp.StatusCode != 200 {
+		err = fmt.Errorf("Error %d in retrieving note with ID %s", resp.StatusCode, id)
 		return note, err
 	}
 
@@ -237,7 +235,7 @@ func (c *Client) GetNote(id string, fields string) (Note, error) {
 }
 
 /** Retrieve all the notes in a given order. */
-func (c *Client) GetAllNotes(fields string, order_by string, order_dir string) ([]Note, error) {
+func (c *Client) GetAllNotes(fields string, orderBy string, orderDir string) ([]Note, error) {
 	var result notesResult
 	var notes []Note
 
@@ -250,11 +248,11 @@ func (c *Client) GetAllNotes(fields string, order_by string, order_dir string) (
 		}
 
 		q := req.URL.Query()
-		if len(order_by) > 0 {
-			q.Add("order_by", order_by)
+		if len(orderBy) > 0 {
+			q.Add("order_by", orderBy)
 		}
-		if len(order_dir) > 0 {
-			q.Add("order_dir", strings.ToUpper(order_dir))
+		if len(orderDir) > 0 {
+			q.Add("order_dir", strings.ToUpper(orderDir))
 		}
 		q.Add("page", strconv.Itoa(page_num))
 		q.Add("fields", fields)
@@ -267,6 +265,11 @@ func (c *Client) GetAllNotes(fields string, order_by string, order_dir string) (
 		}
 
 		defer resp.Body.Close()
+
+		if resp.StatusCode != 200 {
+			err = fmt.Errorf("Error %d in retrieving the notes", resp.StatusCode)
+			return notes, err
+		}
 
 		data, err := io.ReadAll(resp.Body)
 		if err != nil {
@@ -396,25 +399,27 @@ func (c *Client) DeleteNote(id string, permanent bool) (string, error) {
 	return id, nil
 }
 
-func main() {
-	newClient, newErr := New()
-	if newErr != nil {
-		fmt.Print("Error in creating new client: ", newErr)
-	}
-	note1, note1err := newClient.GetNote("202020", "id,title,body,updated_time")
-	fmt.Print(note1.Body)
-	if note1err != nil {
-		fmt.Print(note1err)
-	}
-	// notes, _ := newClient.GetAllNotes("id,title,body", "title", "asc")
-	// for _, el := range notes {
-	// 	fmt.Printf("%s\n", el.Title)
-	// }
-	// newnote, _ := newClient.CreateNote("new note", "markdown", "Some note in **Markdown**")
-	// fmt.Print(newnote.ID)
-	// data := `{"title": "updated note", "body": "provola!"}`
-	// updateNote, _ := newClient.UpdateNote("32040403030sa", data)
-	// fmt.Print(updateNote.ID)
-	// deletedID, _ := newClient.DeleteNote("d2020010", false)
-	// fmt.Print(deletedID)
-}
+// func main() {
+// 	newClient, newErr := New()
+// 	if newErr != nil {
+// 		fmt.Print("Error in creating new client: ", newErr)
+// 	}
+// 	// note1, note1err := newClient.GetNote("202020", "id,title,body,updated_time")
+// 	// fmt.Print(note1.Body)
+// 	// if note1err != nil {
+// 	// 	fmt.Print(note1err)
+// 	// }
+// 	notes, notesErr := newClient.GetAllNotes("id,title", "title", "asc")
+// 	if notesErr != nil {
+// 		fmt.Print("Error in creating new client: ", newErr)
+// 	}
+// 	data, _ := json.MarshalIndent(notes, "", "")
+// 	fmt.Println(string(data))
+// 	// newnote, _ := newClient.CreateNote("new note", "markdown", "Some note in **Markdown**")
+// 	// fmt.Print(newnote.ID)
+// 	// updateData := `{"title": "updated note", "body": "provola!"}`
+// 	// updateNote, _ := newClient.UpdateNote("360cd1a12bfb4094a315e4a56487a424", updateData)
+// 	// fmt.Print(updateNote.UpdatedTime)
+// 	// deletedID, _ := newClient.DeleteNote("d2020010", false)
+// 	// fmt.Print(deletedID)
+// }
