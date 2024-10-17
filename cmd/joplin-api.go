@@ -15,9 +15,10 @@ import (
 
 const (
 	BaseURL            = "http://localhost"
+	AuthTokenPath      = "/.joplin-auth-token"
 	MinPortNum         = 41184
 	MaxPortNum         = 41194
-	retriesGetApiToken = 20
+	RetriesGetApiToken = 20
 )
 
 /** Properties of a client. */
@@ -101,9 +102,15 @@ func New() (*Client, error) {
 		return nil, retErr
 	}
 
-	// Retrieve the authorisation token from file or request it programmatically
-	if authTokenFile, err := os.ReadFile("./.auth-token"); err == nil {
-		newClient.apiToken = string(authTokenFile)
+	// Retrieve the authorisation token from file if any or request it programmatically
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		retErr = err
+	}
+	authDir := homeDir + AuthTokenPath
+
+	if authTokenFile, err := os.ReadFile(authDir); err == nil {
+		newClient.apiToken = strings.TrimSpace(string(authTokenFile))
 	} else {
 		var result struct {
 			AuthToken string `json:"auth_token"`
@@ -164,7 +171,7 @@ func New() (*Client, error) {
 
 				// Save the api token on a file
 				newClient.apiToken = result.ApiToken
-				if err := os.WriteFile("./.auth-token", []byte(newClient.apiToken), 0666); err != nil {
+				if err := os.WriteFile(authDir, []byte(newClient.apiToken), 0666); err != nil {
 					retErr = err
 				}
 
@@ -177,7 +184,7 @@ func New() (*Client, error) {
 			} else if result.Status == "waiting" {
 				retries++
 
-				if retries < retriesGetApiToken {
+				if retries < RetriesGetApiToken {
 					time.Sleep(time.Second)
 
 					continue
