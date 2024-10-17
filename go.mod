@@ -1,4 +1,4 @@
-module joplin-api.go
+module github.com/ciminoV/joplingo-cli
 
 go 1.23.1
 

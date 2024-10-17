@@ -1,6 +1,6 @@
 package main
 
-import "joplin-api.go/cmd"
+import "github.com/ciminoV/joplingo-cli/cmd"
 
 func main() {
 	cmd.Execute()
