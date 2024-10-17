@@ -10,9 +10,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-/** Client initialization. */
-var client *Client
+var (
+	client  *Client
+	verbose bool
+)
 
+/** Client initialization. */
 func initClient() error {
 	var err error
 	client, err = New()
@@ -34,7 +37,9 @@ var (
 				os.Exit(1)
 			}
 
-			fmt.Printf("Removed note with ID: %s\n", id)
+			if verbose {
+				fmt.Printf("Removed note with ID: %s\n", id)
+			}
 		},
 	}
 )
@@ -53,8 +58,10 @@ var updateNote = &cobra.Command{
 		}
 
 		// Print the updated note
-		result, _ := json.MarshalIndent(note, "", "")
-		fmt.Println(string(result))
+		if verbose {
+			result, _ := json.MarshalIndent(note, "", "")
+			fmt.Println(string(result))
+		}
 	},
 }
 
@@ -84,8 +91,10 @@ var (
 			}
 
 			// Print the new note
-			data, _ := json.MarshalIndent(note, "", "")
-			fmt.Println(string(data))
+			if verbose {
+				data, _ := json.MarshalIndent(note, "", "")
+				fmt.Println(string(data))
+			}
 
 			if remove {
 				if err := os.Remove(args[0]); err != nil {
@@ -142,16 +151,17 @@ func Execute() {
 		os.Exit(1)
 	}
 
+	rootCmd := &cobra.Command{Use: "joplingo-cli"}
+	rootCmd.AddCommand(deleteNote)
+	rootCmd.AddCommand(updateNote, createNote)
+	rootCmd.AddCommand(getNote, getAllNote)
+
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
 	deleteNote.Flags().BoolVarP(&permanent, "permanent", "p", false, "permanently delete the note")
 	createNote.Flags().BoolVarP(&remove, "delete", "d", false, "delete the source file afterward")
 	createNote.Flags().StringVarP(&format, "format", "f", "markdown", "format of the note (markdown/html)")
 	getAllNote.Flags().StringVarP(&orderBy, "order_by", "f", "", "order by field")
 	getAllNote.Flags().StringVarP(&orderDir, "order_dir", "d", "", "order direction (asc/desc)")
-
-	rootCmd := &cobra.Command{Use: "joplingo-cli"}
-	rootCmd.AddCommand(deleteNote)
-	rootCmd.AddCommand(updateNote, createNote)
-	rootCmd.AddCommand(getNote, getAllNote)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
